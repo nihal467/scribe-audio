@@ -246,16 +246,29 @@ export function QuestionnairePanel({ active, onRun, onCancel }: Props) {
     );
   }
 
+  const shownCount = list?.length ?? 0;
+
   return (
     <Card className="md:col-span-2">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileQuestion className="h-4 w-4" /> CARE Questionnaire
-        </CardTitle>
-        <CardDescription>
-          Pull an existing questionnaire from CARE, set expected answers, record audio,
-          and compare against the scribe AI response.
-        </CardDescription>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <FileQuestion className="h-4 w-4" /> CARE Questionnaire
+            </CardTitle>
+            <CardDescription>
+              Pull an existing questionnaire from CARE, set expected answers, record audio,
+              and compare against the scribe AI response.
+            </CardDescription>
+          </div>
+          {list != null && (
+            <Badge variant={shownCount === 0 ? "warning" : "info"}>
+              {totalCount != null && totalCount !== shownCount
+                ? `${shownCount} shown / ${totalCount} total`
+                : `${shownCount} loaded`}
+            </Badge>
+          )}
+        </div>
       </CardHeader>
 
       <CardContent className="space-y-4">
@@ -301,9 +314,6 @@ export function QuestionnairePanel({ active, onRun, onCancel }: Props) {
                 <option value="draft">draft</option>
                 <option value="retired">retired</option>
               </select>
-              {totalCount != null && (
-                <Badge variant="info">{totalCount} total</Badge>
-              )}
             </div>
 
             {listError && (
