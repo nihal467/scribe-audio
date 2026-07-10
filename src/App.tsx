@@ -14,6 +14,26 @@ import type { RunResult } from "@/types";
 const HISTORY_KEY = "scribe-audio.runs";
 const HISTORY_LIMIT = 50;
 
+/**
+ * Pull the most recent `error` string out of a Scribe's `meta.processings`
+ * array — that's where care_scribe stores the real reason a run failed
+ * (Whisper 4xx, quota exceeded, malformed AI response, etc.). Returns null
+ * if there's no error entry or `meta` isn't shaped as expected.
+ */
+function extractLastProcessingError(meta: unknown): string | null {
+  if (!meta || typeof meta !== "object") return null;
+  const processings = (meta as Record<string, unknown>).processings;
+  if (!Array.isArray(processings)) return null;
+  for (let i = processings.length - 1; i >= 0; i--) {
+    const p = processings[i];
+    if (p && typeof p === "object") {
+      const err = (p as Record<string, unknown>).error;
+      if (typeof err === "string" && err.trim()) return err.trim();
+    }
+  }
+  return null;
+}
+
 export default function App() {
   return (
     <ConnectionProvider>
@@ -59,13 +79,20 @@ function Shell() {
 
         const s = outcome.scribe;
         if (s.status !== "COMPLETED") {
+          // care_scribe embeds the real reason in meta.processings[*].error
+          // (see care_scribe/tasks/scribe.py — every failure branch appends
+          // `processing["error"] = str(e)` before setting status=FAILED).
+          const backendErr = extractLastProcessingError(s.meta);
+          const errMsg = backendErr
+            ? `Backend returned ${s.status} — ${backendErr}`
+            : `Backend returned status ${s.status}`;
           result = {
             id: uuid(),
             timestamp: new Date().toISOString(),
             caseId: entry.id,
             caseName: entry.name,
             status: "failed",
-            errorMessage: `Backend returned status ${s.status}`,
+            errorMessage: errMsg,
             scribeId: s.external_id,
             latencyMs: outcome.latencyMs,
             ai_response: s.ai_response ?? undefined,
@@ -74,7 +101,7 @@ function Shell() {
             audioSource: source,
           };
           toast.error("Run finished with an error", {
-            description: `Status: ${s.status}`,
+            description: backendErr ?? `Status: ${s.status}`,
           });
         } else {
           // Only score against `expected` for test-case runs — live-record
