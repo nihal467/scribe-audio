@@ -25,8 +25,12 @@ type LoadState =
 
 const PRESET_URLS: { label: string; url: string }[] = [
   {
-    label: "main branch (GH Pages)",
-    url: "https://10bedicu.github.io/care_scribe_fe/assets/remoteEntry.js",
+    label: "Cloudflare Pages (main)",
+    url: "https://care-scribe-fe.pages.dev/assets/remoteEntry.js",
+  },
+  {
+    label: "10bedicu prod",
+    url: "https://care-scribe.10bedicu.in/assets/remoteEntry.js",
   },
   {
     label: "local dev (vite preview 4173)",
@@ -98,7 +102,7 @@ export function FrontendPanel() {
   const disabled = !session;
   const externalHostWarning =
     draftUrl && !isLikelyTrustedUrl(draftUrl)
-      ? "This URL is not on a recognised host (10bedicu.github.io / localhost / your CARE domain). Anyone loading the CARE FE will execute code from here."
+      ? "This URL isn’t on a recognised care-ecosystem host (pages.dev / github.io / 10bedicu.in / localhost). Anyone loading the CARE FE will execute code from here — save only if you trust the origin."
       : null;
 
   return (
@@ -185,7 +189,7 @@ export function FrontendPanel() {
             {externalHostWarning && (
               <Alert variant="warning">
                 <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Untrusted host</AlertTitle>
+                <AlertTitle>Unrecognised host — you can still save</AlertTitle>
                 <AlertDescription>{externalHostWarning}</AlertDescription>
               </Alert>
             )}
@@ -227,11 +231,18 @@ export function FrontendPanel() {
 function isLikelyTrustedUrl(url: string): boolean {
   try {
     const u = new URL(url);
+    const h = u.hostname;
     return (
-      u.hostname === "localhost" ||
-      u.hostname.endsWith(".localhost") ||
-      u.hostname.endsWith(".github.io") ||
-      u.hostname === "10bedicu.github.io"
+      h === "localhost" ||
+      h.endsWith(".localhost") ||
+      // Cloudflare Pages / Workers — what CARE plugins use in prod
+      h.endsWith(".pages.dev") ||
+      h.endsWith(".workers.dev") ||
+      // GitHub Pages
+      h.endsWith(".github.io") ||
+      // 10bedicu’s own domains
+      h === "10bedicu.in" ||
+      h.endsWith(".10bedicu.in")
     );
   } catch {
     return false;
