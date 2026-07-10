@@ -1,8 +1,37 @@
 import type { CareAPI } from "@/lib/care-api";
-import type { Scribe, ScribeStatus, TestCaseManifest } from "@/types";
+import type { FormGroup, Scribe, ScribeStatus, TestCaseManifest } from "@/types";
 import { readAudioDuration } from "@/lib/utils";
 
 const TERMINAL: ReadonlySet<ScribeStatus> = new Set(["COMPLETED", "FAILED", "REFUSED"]);
+
+/**
+ * Recursively walk a form_data tree and collapse JSON-Schema-nullable
+ * `type: ["X", "null"]` (or `["null", "X"]`) into a single `type: "X"`.
+ *
+ * care_scribe passes each field's `schema` verbatim into Google Gemini's
+ * `types.Tool(function_declarations=[…])`, whose Pydantic model rejects the
+ * array-of-types shape with:
+ *   "Input should be 'TYPE_UNSPECIFIED', 'STRING', 'NUMBER', ..., 'NULL'
+ *    [input_value=['string', 'null'], input_type=list]"
+ * OpenAI's structured outputs accept either form, so the single-type
+ * variant is portable across providers.
+ */
+export function sanitizeFormDataForGemini(form_data: FormGroup[]): FormGroup[] {
+  return JSON.parse(JSON.stringify(form_data), (_key, value) => {
+    if (
+      value &&
+      typeof value === "object" &&
+      Array.isArray((value as { type?: unknown }).type)
+    ) {
+      const types = (value as { type: unknown[] }).type;
+      const nonNull = types.filter((t) => t !== "null" && t !== null);
+      if (nonNull.length === 1 && typeof nonNull[0] === "string") {
+        return { ...value, type: nonNull[0] };
+      }
+    }
+    return value;
+  });
+}
 
 export type ScribeStage =
   | "creating"
@@ -70,7 +99,7 @@ export async function runTestCase(args: {
   abortIfNeeded();
   const scribe = await api.createScribe({
     status: "CREATED",
-    form_data: manifest.form_data,
+    form_data: sanitizeFormDataForGemini(manifest.form_data),
     benchmark: true,
     chat_model: chatModel,
     audio_model: audioModel,

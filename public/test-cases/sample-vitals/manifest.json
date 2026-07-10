@@ -18,11 +18,9 @@
           "schema": {
             "type": "object",
             "properties": {
-              "value": { "type": ["number", "null"], "description": "Systolic blood pressure in mmHg" },
-              "note": { "type": ["string", "null"], "description": "Any additional context" }
-            },
-            "required": ["value", "note"],
-            "additionalProperties": false
+              "value": { "type": "number", "description": "Systolic blood pressure in mmHg" },
+              "note": { "type": "string", "description": "Any additional context" }
+            }
           }
         },
         {
@@ -33,11 +31,9 @@
           "schema": {
             "type": "object",
             "properties": {
-              "value": { "type": ["number", "null"], "description": "Diastolic blood pressure in mmHg" },
-              "note": { "type": ["string", "null"] }
-            },
-            "required": ["value", "note"],
-            "additionalProperties": false
+              "value": { "type": "number", "description": "Diastolic blood pressure in mmHg" },
+              "note": { "type": "string", "description": "Any additional context" }
+            }
           }
         },
         {
@@ -48,11 +44,9 @@
           "schema": {
             "type": "object",
             "properties": {
-              "value": { "type": ["number", "null"], "description": "Oxygen saturation percentage 0-100" },
-              "note": { "type": ["string", "null"] }
-            },
-            "required": ["value", "note"],
-            "additionalProperties": false
+              "value": { "type": "number", "description": "Oxygen saturation percentage 0-100" },
+              "note": { "type": "string", "description": "Any additional context" }
+            }
           }
         }
       ]
