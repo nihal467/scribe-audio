@@ -106,10 +106,13 @@ function Shell() {
             description: backendErr ?? `Status: ${s.status}`,
           });
         } else {
-          // Only score against `expected` for test-case runs — live-record
-          // audio has no ground truth so scoring is meaningless.
+          // Score against `expected` whenever the manifest has any — the
+          // audio source (test-case file vs. live recording) doesn't matter;
+          // scoring compares AI output to the ground-truth values.
+          const hasExpected =
+            manifest.expected && Object.keys(manifest.expected).length > 0;
           const score =
-            s.ai_response && source === "test-case"
+            s.ai_response && hasExpected
               ? scoreAgainstExpected(s.ai_response, manifest.expected)
               : null;
           result = {
@@ -124,14 +127,14 @@ function Shell() {
             score,
             formData: manifest.form_data,
             audioSource: source,
-            expected: source === "test-case" ? manifest.expected : undefined,
+            expected: hasExpected ? manifest.expected : undefined,
           };
           toast.success("Run complete", {
             description: score
               ? `Score: ${score.percentage.toFixed(0)}%`
-              : source === "live-record"
-                ? "Live recording — no scoring"
-                : "No score",
+              : hasExpected
+                ? "No score (empty AI response)"
+                : "No ground truth — scoring skipped",
           });
         }
       } catch (err) {

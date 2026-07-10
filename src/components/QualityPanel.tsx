@@ -121,6 +121,8 @@ export function QualityPanel({ runs, onClear }: QualityPanelProps) {
                       <TableCell>
                         {r.score ? (
                           <ScoreBadge score={r.score} />
+                        ) : r.status === "success" && (!r.expected || Object.keys(r.expected).length === 0) ? (
+                          <Badge variant="warning">no truth</Badge>
                         ) : (
                           <Badge variant="danger">no score</Badge>
                         )}
@@ -197,10 +199,11 @@ function RunDetail({
   }
   const hasForm = !!run.formData && run.formData.length > 0;
   const hasDiff = !!run.score && Object.keys(run.score.perField).length > 0;
+  const noTruth = !run.expected || Object.keys(run.expected).length === 0;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <ScoreGauge score={run.score} liveRecord={run.audioSource === "live-record"} />
+        <ScoreGauge score={run.score} noTruth={noTruth} />
         <div className="flex-1 space-y-1 text-xs text-slate-500">
           <div className="flex items-center gap-2">
             <span className="font-medium text-slate-700">Case:</span> {run.caseName}
@@ -516,11 +519,11 @@ function formatFieldValue(v: unknown, field: FormField): string {
   return String(v);
 }
 
-function ScoreGauge({ score, liveRecord }: { score: ScoreOutcome | null; liveRecord?: boolean }) {
+function ScoreGauge({ score, noTruth }: { score: ScoreOutcome | null; noTruth?: boolean }) {
   if (!score) {
     return (
       <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full border-4 border-slate-200 text-center text-slate-400">
-        {liveRecord ? (
+        {noTruth ? (
           <>
             <Mic className="h-4 w-4" />
             <span className="mt-0.5 text-[9px] uppercase tracking-wide">no truth</span>
