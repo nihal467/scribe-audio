@@ -86,15 +86,22 @@ export async function runTestCase(args: {
       ? manifest.durationSec
       : await readAudioDuration(audio).catch(() => 0);
   const originalName = manifest.audio || "audio.mp3";
+  // MediaRecorder produces mimes like `audio/webm;codecs=opus`, but CARE's
+  // `settings.ALLOWED_MIME_TYPES` is an exact-match allowlist of *base* types
+  // (`audio/webm`, `audio/mp4`, `audio/ogg`, `audio/mpeg`, …). Sending the
+  // codec parameter 400s with `{"detail":"Invalid File Type"}`. Strip it and
+  // reuse the same clean type for the S3 PUT so the presigned URL signature
+  // (which is bound to Content-Type) stays consistent.
+  const wireMime = manifest.mimeType.split(";")[0].trim();
   const file = await api.createScribeFile({
     file_type: "SCRIBE_AUDIO",
     associating_id: scribe.external_id,
     original_name: originalName,
-    mime_type: manifest.mimeType,
+    mime_type: wireMime,
     name: originalName,
     length: duration,
   });
-  await api.uploadToSignedUrl(file.signed_url, audio, manifest.mimeType);
+  await api.uploadToSignedUrl(file.signed_url, audio, wireMime);
   abortIfNeeded();
   await api.completeScribeFile(file.id);
 
