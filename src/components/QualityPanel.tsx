@@ -194,6 +194,16 @@ function RunDetail({
             </pre>
           </details>
         )}
+        {/* Even on failure, showing what the user submitted is useful for
+            diagnosing whether the audio itself was the problem. */}
+        <SubmissionView
+          audioDataUrl={run.audioDataUrl}
+          audioMimeType={run.audioMimeType}
+          audioDurationSec={run.audioDurationSec}
+          expectedTranscript={run.expectedTranscript}
+          expected={run.expected}
+          fieldLabels={run.fieldLabels}
+        />
       </div>
     );
   }
@@ -225,6 +235,18 @@ function RunDetail({
           )}
         </div>
       </div>
+
+      {/* "Your submission" — audio + expected transcript + expected values,
+          the raw inputs the AI worked from. Kept above the tabs so it's easy
+          to compare inputs vs. outputs without hunting through tabs. */}
+      <SubmissionView
+        audioDataUrl={run.audioDataUrl}
+        audioMimeType={run.audioMimeType}
+        audioDurationSec={run.audioDurationSec}
+        expectedTranscript={run.expectedTranscript}
+        expected={run.expected}
+        fieldLabels={run.fieldLabels}
+      />
 
       {/* View toggle — form (default, matches CARE FE), diff (benchmark), raw (JSON) */}
       <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs">
@@ -455,6 +477,136 @@ function TranscriptDiffView({
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Submission view ("what did I send in") ────────────────────────
+// Renders the three raw inputs that produced this run's AI response:
+//   1. The audio blob the user recorded (playable inline).
+//   2. The expected transcript text they typed before hitting Run.
+//   3. The per-field expected values they filled in on the questionnaire.
+// This lives above the tabs so the user can eyeball their inputs against
+// the AI's outputs without switching views. Fields are relabelled via
+// `fieldLabels` (UUID → question text) whenever possible.
+function SubmissionView({
+  audioDataUrl,
+  audioMimeType,
+  audioDurationSec,
+  expectedTranscript,
+  expected,
+  fieldLabels,
+}: {
+  audioDataUrl?: string;
+  audioMimeType?: string;
+  audioDurationSec?: number | null;
+  expectedTranscript?: string;
+  expected?: Record<string, unknown>;
+  fieldLabels?: Record<string, string>;
+}) {
+  const expectedEntries = useMemo(
+    () => (expected ? Object.entries(expected) : []),
+    [expected],
+  );
+  const hasAny =
+    !!audioDataUrl ||
+    (expectedTranscript && expectedTranscript.trim().length > 0) ||
+    expectedEntries.length > 0;
+  if (!hasAny) return null;
+  return (
+    <details
+      open
+      className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm"
+    >
+      <summary className="cursor-pointer select-none font-semibold text-slate-700">
+        <ChevronRight className="mr-1 inline h-3 w-3" /> Your submission
+        <span className="ml-2 text-[10px] font-normal text-slate-500">
+          the three inputs the AI worked from
+        </span>
+      </summary>
+      <div className="mt-3 space-y-3">
+        {/* 1. Audio */}
+        <div>
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+            <Mic className="mr-1 inline h-3 w-3" /> Audio
+            {audioDurationSec != null && audioDurationSec > 0 && (
+              <span className="ml-1 font-normal normal-case text-slate-400">
+                · {audioDurationSec.toFixed(1)}s
+              </span>
+            )}
+          </div>
+          {audioDataUrl ? (
+            <audio
+              controls
+              src={audioDataUrl}
+              className="h-9 w-full max-w-md"
+              // Hint the browser about the container/codec so Safari doesn't
+              // fall back to inferring from the data URL's mime prefix.
+              {...(audioMimeType ? { "data-mime": audioMimeType } : {})}
+            />
+          ) : (
+            <div className="rounded border border-dashed border-slate-300 bg-white px-2 py-1.5 text-xs italic text-slate-400">
+              Audio not stored (older run or file too large).
+            </div>
+          )}
+        </div>
+
+        {/* 2. Expected transcript */}
+        <div>
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+            <FileText className="mr-1 inline h-3 w-3" /> Expected transcript
+          </div>
+          <div className="min-h-[40px] whitespace-pre-wrap rounded border border-slate-200 bg-white px-2 py-1.5 text-xs leading-relaxed text-slate-700">
+            {expectedTranscript && expectedTranscript.trim().length > 0 ? (
+              expectedTranscript
+            ) : (
+              <span className="italic text-slate-400">Not provided</span>
+            )}
+          </div>
+        </div>
+
+        {/* 3. Manual expected values */}
+        <div>
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+            <ListChecks className="mr-1 inline h-3 w-3" /> Expected values ({expectedEntries.length})
+          </div>
+          {expectedEntries.length > 0 ? (
+            <div className="overflow-hidden rounded border border-slate-200 bg-white">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="h-7">Field</TableHead>
+                    <TableHead className="h-7">Expected value</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {expectedEntries.map(([key, value]) => (
+                    <TableRow key={key}>
+                      <TableCell className="align-top text-xs">
+                        <div className="font-medium text-slate-700">
+                          {fieldLabels?.[key] ?? key}
+                        </div>
+                        {fieldLabels?.[key] && (
+                          <div className="font-mono text-[10px] text-slate-400">
+                            {key}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="align-top font-mono text-xs text-slate-700">
+                        {short(value)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="rounded border border-dashed border-slate-300 bg-white px-2 py-1.5 text-xs italic text-slate-400">
+              No expected values were filled in.
+            </div>
+          )}
+        </div>
+      </div>
+    </details>
   );
 }
 

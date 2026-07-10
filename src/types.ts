@@ -144,6 +144,17 @@ export type RunResult = {
   transcriptSimilarity?: number;
   /** UUID → friendly-name mapping used by the Raw-JSON view to relabel keys. */
   fieldLabels?: Record<string, string>;
+  /**
+   * Base64 data URL of the submitted audio, so the "Your submission" panel
+   * in QualityPanel can replay exactly what was sent to the backend.
+   * Stripped from older runs (see stripOldAudio in App.tsx) to keep
+   * localStorage under its ~5MB quota.
+   */
+  audioDataUrl?: string;
+  /** MIME type of the submitted audio (needed by the <audio> element). */
+  audioMimeType?: string;
+  /** Duration of the submitted audio, seconds. */
+  audioDurationSec?: number | null;
 };
 
 /** Per-field + aggregate scoring outcome. */

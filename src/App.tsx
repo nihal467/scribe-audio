@@ -13,6 +13,42 @@ import type { RunResult, TestCaseIndexEntry, TestCaseManifest } from "@/types";
 
 const HISTORY_KEY = "scribe-audio.runs";
 const HISTORY_LIMIT = 50;
+/**
+ * Audio data URLs are ~1.3× the size of the original blob (base64 overhead)
+ * and typical webm-opus recordings are 100–500 KB — so keeping audio on every
+ * one of 50 history rows would blow past localStorage's ~5 MB quota. We keep
+ * it on just the most recent few runs so the "Your submission" replay is
+ * always available for the run you likely care about, and drop it silently
+ * from older ones.
+ */
+const AUDIO_KEEP_LATEST = 3;
+/**
+ * Skip storing audio at all if the blob is bigger than this — even one such
+ * run would eat most of the localStorage quota. The user still gets to hear
+ * their recording live via the recorder's blob URL; we just don't persist it.
+ */
+const AUDIO_MAX_STORE_BYTES = 1_500_000;
+
+/**
+ * Convert a Blob to a base64 data URL. Wrapped in a Promise around
+ * FileReader because Safari lacks Blob.text()/arrayBuffer() → base64 in a
+ * useful sync form.
+ */
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** Drop audio data URLs from all but the top-N runs so localStorage doesn't overflow. */
+function stripOldAudio(runs: RunResult[]): RunResult[] {
+  return runs.map((r, i) =>
+    i < AUDIO_KEEP_LATEST ? r : { ...r, audioDataUrl: undefined },
+  );
+}
 
 /**
  * Pull the most recent `error` string out of a Scribe's `meta.processings`
@@ -73,6 +109,22 @@ function Shell() {
       setActive({ caseId: entry.id, update: { stage: "creating" }, startedAt });
       const source: RunResult["audioSource"] = audioSource ?? "test-case";
 
+      // Snapshot the submitted audio as a data URL up-front so the "Your
+      // submission" panel in QualityPanel can replay it even after reload —
+      // Blob URLs die with the page, so we base64 it. Skip huge blobs (see
+      // AUDIO_MAX_STORE_BYTES) so a stray 5-minute recording can't blow the
+      // whole run history out of localStorage.
+      let audioDataUrl: string | undefined;
+      if (audio.size <= AUDIO_MAX_STORE_BYTES) {
+        try {
+          audioDataUrl = await blobToDataUrl(audio);
+        } catch {
+          audioDataUrl = undefined;
+        }
+      }
+      const audioMimeType = audio.type || manifest.mimeType;
+      const audioDurationSec = manifest.durationSec ?? null;
+
       let result: RunResult;
       try {
         const outcome = await runTestCase({
@@ -129,6 +181,12 @@ function Shell() {
             expectedTranscript,
             transcriptSimilarity,
             fieldLabels,
+            expected: manifest.expected && Object.keys(manifest.expected).length > 0
+              ? manifest.expected
+              : undefined,
+            audioDataUrl,
+            audioMimeType,
+            audioDurationSec,
           };
           toast.error("Run finished with an error", {
             description: backendErr ?? `Status: ${s.status}`,
@@ -160,6 +218,9 @@ function Shell() {
             expectedTranscript,
             transcriptSimilarity,
             fieldLabels,
+            audioDataUrl,
+            audioMimeType,
+            audioDurationSec,
           };
           toast.success("Run complete", {
             description: score
@@ -188,11 +249,22 @@ function Shell() {
           score: null,
           formData: manifest.form_data,
           audioSource: source,
+          expectedTranscript: manifest.expectedTranscript?.trim() || undefined,
+          fieldLabels:
+            manifest.fieldLabels && Object.keys(manifest.fieldLabels).length > 0
+              ? manifest.fieldLabels
+              : undefined,
+          expected: manifest.expected && Object.keys(manifest.expected).length > 0
+            ? manifest.expected
+            : undefined,
+          audioDataUrl,
+          audioMimeType,
+          audioDurationSec,
         };
         toast.error("Run failed", { description: msg });
       }
 
-      setRuns((prev) => [result, ...prev].slice(0, HISTORY_LIMIT));
+      setRuns((prev) => stripOldAudio([result, ...prev].slice(0, HISTORY_LIMIT)));
       setActive(null);
       abortRef.current = null;
     },
