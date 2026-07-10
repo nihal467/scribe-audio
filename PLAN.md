@@ -10,7 +10,7 @@ A standalone dashboard (hosted on GitHub Pages) that connects to any CARE deploy
 |------|------|------|
 | [`ohcnetwork/care`](https://github.com/ohcnetwork/care) | Django backend | Hosts REST API, loads Python "plugs" from `plug_config.py` / `ADDITIONAL_PLUGS` env, exposes `/api/v1/plug_config/` for FE plugin discovery |
 | [`ohcnetwork/care_fe`](https://github.com/ohcnetwork/care_fe) | React + Vite host | Loads federation remotes at runtime. Merges build-time `REACT_ENABLED_APPS` env with API-managed `plug_config` entries |
-| [`10bedicu/care_scribe`](https://github.com/10bedicu/care_scribe) | Python plugin | Adds `/api/v1/scribe/`, `/api/v1/scribe_file/`, `/api/v1/quota/`. Talks to OpenAI / Azure / Google. Already benchmark-aware |
+| [`10bedicu/care_scribe`](https://github.com/10bedicu/care_scribe) | Python plugin | Adds `/api/care_scribe/scribe/`, `/api/care_scribe/scribe_file/`, `/api/care_scribe/quota/` (plugin routes mount at `/api/{plug_name}/`). Talks to OpenAI / Azure / Google. Already benchmark-aware |
 | [`10bedicu/care_scribe_fe`](https://github.com/10bedicu/care_scribe_fe) | TS federation remote | Deployed to GH Pages by default. Adds routes/components/nav items to CARE FE at runtime |
 
 ---
@@ -39,24 +39,24 @@ sequenceDiagram
     D->>B: POST /api/v1/auth/login/ {username, password}
     B-->>D: {access, refresh}
 
-    D->>B: POST /api/v1/scribe/ {status:CREATED, form_data, benchmark:true, chat_model?, audio_model?}
+    D->>B: POST /api/care_scribe/scribe/ {status:CREATED, form_data, benchmark:true, chat_model?, audio_model?}
     B-->>D: {external_id, ...}
 
-    D->>B: POST /api/v1/scribe_file/?file_type=SCRIBE_AUDIO&associating_id=<id> {mime_type, original_name, length}
+    D->>B: POST /api/care_scribe/scribe_file/?file_type=SCRIBE_AUDIO&associating_id=<id> {mime_type, original_name, length}
     B-->>D: {id, signed_url}
 
     D->>+B: PUT <signed_url> (raw audio bytes)
     B-->>-D: 200
 
-    D->>B: PATCH /api/v1/scribe_file/{id}/ {upload_completed:true}
+    D->>B: PATCH /api/care_scribe/scribe_file/{id}/ {upload_completed:true}
     B-->>D: 200
 
-    D->>B: PATCH /api/v1/scribe/{external_id}/ {status:READY}
+    D->>B: PATCH /api/care_scribe/scribe/{external_id}/ {status:READY}
     B-->>D: 200
     B->>Q: process_ai_form_fill.delay(external_id)
 
     loop until COMPLETED or FAILED
-        D->>B: GET /api/v1/scribe/{external_id}/
+        D->>B: GET /api/care_scribe/scribe/{external_id}/
         B-->>D: {status, ai_response?}
     end
 
@@ -136,7 +136,7 @@ flowchart LR
    - Text input: CARE backend URL (e.g. `https://careapi.ohc.network`)
    - Text inputs: username + password
    - Login button → `POST /api/v1/auth/login/` → JWT in `sessionStorage`
-   - Shows connection status + whether `care_scribe` plug is installed (probed by hitting `/api/v1/scribe/` with `?limit=1` — expect 200 or 401 if reachable but not auth'd)
+   - Shows connection status + whether `care_scribe` plug is installed (probed by hitting `/api/care_scribe/scribe/` with `?limit=1` — expect 200 or 401/403 if reachable but not auth'd)
 
 2. **Plug config manager**
    - Lists `GET /api/v1/plug_config/`

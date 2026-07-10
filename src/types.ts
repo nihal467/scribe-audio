@@ -19,7 +19,7 @@ export type PlugConfig = {
   [k: string]: unknown;
 };
 
-/** Subset of the Scribe model exposed via `/api/v1/scribe/`. */
+/** Subset of the Scribe model exposed via `/api/care_scribe/scribe/`. */
 export type ScribeStatus =
   | "CREATED"
   | "READY"
@@ -44,7 +44,7 @@ export type Scribe = {
   chat_output_tokens?: number | null;
 };
 
-/** File resource returned by `POST /api/v1/scribe_file/`. */
+/** File resource returned by `POST /api/care_scribe/scribe_file/`. */
 export type ScribeFile = {
   id: string;
   file_type: "SCRIBE_AUDIO" | "SCRIBE_DOCUMENT";

@@ -85,7 +85,7 @@ Each `manifest.json` follows this shape:
   "tags": ["vitals", "icu"],
   "notes": "Short prose describing what the case tests.",
 
-  // form_data is sent as-is to POST /api/v1/scribe/. It must match the shape
+  // form_data is sent as-is to POST /api/care_scribe/scribe/. It must match the shape
   // care_scribe expects (groups → fields, each field with an id + schema).
   "form_data": [
     {
@@ -145,17 +145,17 @@ sequenceDiagram
   participant W as Celery worker
 
   U->>D: Pick case + Run
-  D->>B: POST /api/v1/scribe/ {form_data, benchmark:true}
+  D->>B: POST /api/care_scribe/scribe/ {form_data, benchmark:true}
   B-->>D: {external_id, status:CREATED}
-  D->>B: POST /api/v1/scribe_file/ {file_type:SCRIBE_AUDIO, associating_id, mime_type, length}
+  D->>B: POST /api/care_scribe/scribe_file/ {file_type:SCRIBE_AUDIO, associating_id, mime_type, length}
   B-->>D: {id, signed_url}
   D->>S3: PUT audio bytes
   S3-->>D: 200
-  D->>B: PATCH /api/v1/scribe_file/{id}/ {upload_completed:true}
-  D->>B: PATCH /api/v1/scribe/{external_id}/ {status:READY}
+  D->>B: PATCH /api/care_scribe/scribe_file/{id}/ {upload_completed:true}
+  D->>B: PATCH /api/care_scribe/scribe/{external_id}/ {status:READY}
   B->>W: enqueue process_ai_form_fill
   loop poll every 1.5s
-    D->>B: GET /api/v1/scribe/{external_id}/
+    D->>B: GET /api/care_scribe/scribe/{external_id}/
     B-->>D: status: READY | GENERATING_TRANSCRIPT | GENERATING_AI_RESPONSE | COMPLETED
   end
   D->>D: Score ai_response against expected

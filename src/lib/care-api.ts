@@ -138,10 +138,12 @@ export class CareAPI {
   }
 
   // ─── Scribe ──────────────────────────────────────────────────────────────
+  // NB: plugin routes mount at /api/{plug_name}/... (see care/config/urls.py:
+  //   for plug in settings.PLUGIN_APPS: urlpatterns += [path(f"api/{plug}/", ...)])
 
   async createScribe(payload: Partial<Scribe> & { benchmark?: boolean }): Promise<Scribe> {
     try {
-      return await this.request<Scribe>("/api/v1/scribe/", {
+      return await this.request<Scribe>("/api/care_scribe/scribe/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -158,11 +160,11 @@ export class CareAPI {
   }
 
   async getScribe(externalId: string): Promise<Scribe> {
-    return this.request<Scribe>(`/api/v1/scribe/${externalId}/`);
+    return this.request<Scribe>(`/api/care_scribe/scribe/${externalId}/`);
   }
 
   async updateScribe(externalId: string, patch: Partial<Scribe>): Promise<Scribe> {
-    return this.request<Scribe>(`/api/v1/scribe/${externalId}/`, {
+    return this.request<Scribe>(`/api/care_scribe/scribe/${externalId}/`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
@@ -179,7 +181,7 @@ export class CareAPI {
     name: string;
     length?: number; // seconds; serializer multiplies by 1000
   }): Promise<ScribeFile> {
-    return this.request<ScribeFile>("/api/v1/scribe_file/", {
+    return this.request<ScribeFile>("/api/care_scribe/scribe_file/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -187,7 +189,7 @@ export class CareAPI {
   }
 
   async completeScribeFile(id: string): Promise<ScribeFile> {
-    return this.request<ScribeFile>(`/api/v1/scribe_file/${id}/`, {
+    return this.request<ScribeFile>(`/api/care_scribe/scribe_file/${id}/`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ upload_completed: true }),
