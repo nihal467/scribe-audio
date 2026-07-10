@@ -32,7 +32,7 @@ function Shell() {
   const handleRun = useCallback<
     React.ComponentProps<typeof AudioPanel>["onRun"]
   >(
-    async ({ entry, manifest, audio, modelOverrides }) => {
+    async ({ entry, manifest, audio, modelOverrides, audioSource }) => {
       if (!api) {
         toast.error("Not connected", { description: "Log in to the CARE backend first." });
         return;
@@ -41,6 +41,7 @@ function Shell() {
       abortRef.current = controller;
       const startedAt = Date.now();
       setActive({ caseId: entry.id, update: { stage: "creating" }, startedAt });
+      const source: RunResult["audioSource"] = audioSource ?? "test-case";
 
       let result: RunResult;
       try {
@@ -69,14 +70,19 @@ function Shell() {
             latencyMs: outcome.latencyMs,
             ai_response: s.ai_response ?? undefined,
             score: null,
+            formData: manifest.form_data,
+            audioSource: source,
           };
           toast.error("Run finished with an error", {
             description: `Status: ${s.status}`,
           });
         } else {
-          const score = s.ai_response
-            ? scoreAgainstExpected(s.ai_response, manifest.expected)
-            : null;
+          // Only score against `expected` for test-case runs — live-record
+          // audio has no ground truth so scoring is meaningless.
+          const score =
+            s.ai_response && source === "test-case"
+              ? scoreAgainstExpected(s.ai_response, manifest.expected)
+              : null;
           result = {
             id: uuid(),
             timestamp: new Date().toISOString(),
@@ -87,9 +93,16 @@ function Shell() {
             latencyMs: outcome.latencyMs,
             ai_response: s.ai_response ?? undefined,
             score,
+            formData: manifest.form_data,
+            audioSource: source,
+            expected: source === "test-case" ? manifest.expected : undefined,
           };
           toast.success("Run complete", {
-            description: score ? `Score: ${score.percentage.toFixed(0)}%` : "No score",
+            description: score
+              ? `Score: ${score.percentage.toFixed(0)}%`
+              : source === "live-record"
+                ? "Live recording — no scoring"
+                : "No score",
           });
         }
       } catch (err) {
@@ -109,6 +122,8 @@ function Shell() {
           errorMessage: msg,
           latencyMs: Date.now() - startedAt,
           score: null,
+          formData: manifest.form_data,
+          audioSource: source,
         };
         toast.error("Run failed", { description: msg });
       }

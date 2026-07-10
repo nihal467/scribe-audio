@@ -112,6 +112,12 @@ export type RunResult = {
   latencyMs: number;
   ai_response?: Record<string, unknown>;
   score: ScoreOutcome | null;
+  /** The form definition sent to /scribe/ — kept so we can render the "filled form" view. */
+  formData?: FormGroup[];
+  /** Where the audio came from — 'live-record' runs skip scoring. */
+  audioSource?: "test-case" | "live-record";
+  /** Only set for live-record runs (test cases use their manifest's expected). */
+  expected?: Record<string, unknown>;
 };
 
 /** Per-field + aggregate scoring outcome. */

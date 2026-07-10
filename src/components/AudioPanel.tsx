@@ -1,6 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Dices, FileAudio, Play, Square, Tag } from "lucide-react";
+import {
+  CircleDot,
+  Dices,
+  FileAudio,
+  Mic,
+  MicOff,
+  Play,
+  Square,
+  Tag,
+  Trash2,
+} from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,8 +51,16 @@ export type AudioPanelProps = {
     manifest: TestCaseManifest;
     audio: Blob;
     modelOverrides: { chatModel?: string; audioModel?: string };
+    audioSource: "test-case" | "live-record";
   }) => Promise<void>;
   onCancel: () => void;
+};
+
+type LiveRecording = {
+  blob: Blob;
+  mimeType: string;
+  durationSec: number;
+  url: string;
 };
 
 const STAGE_PERCENT: Record<RunUpdate["stage"], number> = {
@@ -66,6 +84,23 @@ export function AudioPanel({ active, onRun, onCancel }: AudioPanelProps) {
   const [chatModel, setChatModel] = useState("");
   const [audioModel, setAudioModel] = useState("");
   const [runPreparing, setRunPreparing] = useState(false);
+
+  // Live recording state
+  const [recording, setRecording] = useState<LiveRecording | null>(null);
+  const [recorderState, setRecorderState] = useState<
+    { kind: "idle" } | { kind: "requesting" } | { kind: "recording"; elapsedSec: number } | { kind: "error"; message: string }
+  >({ kind: "idle" });
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const tickRef = useRef<number | null>(null);
+  const startedAtRef = useRef<number>(0);
+
+  // Free the object URL when the recording is replaced or unmounted.
+  useEffect(() => {
+    return () => {
+      if (recording?.url) URL.revokeObjectURL(recording.url);
+    };
+  }, [recording]);
 
   useEffect(() => {
     let alive = true;
@@ -101,18 +136,34 @@ export function AudioPanel({ active, onRun, onCancel }: AudioPanelProps) {
     if (!selected || !api) return;
     setRunPreparing(true);
     try {
-      const [manifest, audio] = await Promise.all([
-        loadTestCaseManifest(selected.id),
-        loadTestCaseAudio(selected.id, selected),
-      ]);
+      const manifest = await loadTestCaseManifest(selected.id);
+      // Prefer the live recording if the user made one; else load the case audio.
+      let audio: Blob;
+      let audioSource: "test-case" | "live-record";
+      let effectiveManifest = manifest;
+      if (recording) {
+        audio = recording.blob;
+        audioSource = "live-record";
+        // Override the mime type + duration so the /scribe_file/ POST is accurate.
+        effectiveManifest = {
+          ...manifest,
+          mimeType: recording.mimeType,
+          durationSec: recording.durationSec,
+          audio: `live-recording.${extFromMime(recording.mimeType)}`,
+        };
+      } else {
+        audio = await loadTestCaseAudio(selected.id, selected);
+        audioSource = "test-case";
+      }
       await onRun({
         entry: selected,
-        manifest,
+        manifest: effectiveManifest,
         audio,
         modelOverrides: {
           chatModel: chatModel.trim() || undefined,
           audioModel: audioModel.trim() || undefined,
         },
+        audioSource,
       });
     } catch (err) {
       toast.error("Run could not start", {
@@ -121,6 +172,58 @@ export function AudioPanel({ active, onRun, onCancel }: AudioPanelProps) {
     } finally {
       setRunPreparing(false);
     }
+  }
+
+  // ─── Live recording ────────────────────────────────────────────────────
+
+  async function startRecording() {
+    if (recorderState.kind === "recording" || recorderState.kind === "requesting") return;
+    setRecorderState({ kind: "requesting" });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = pickSupportedMime();
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const finalMime = rec.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type: finalMime });
+        const durationSec = Math.max(0.1, (Date.now() - startedAtRef.current) / 1000);
+        const url = URL.createObjectURL(blob);
+        setRecording({ blob, mimeType: finalMime, durationSec, url });
+        if (tickRef.current !== null) {
+          window.clearInterval(tickRef.current);
+          tickRef.current = null;
+        }
+        setRecorderState({ kind: "idle" });
+      };
+      recorderRef.current = rec;
+      startedAtRef.current = Date.now();
+      rec.start(1000);
+      tickRef.current = window.setInterval(() => {
+        setRecorderState({
+          kind: "recording",
+          elapsedSec: (Date.now() - startedAtRef.current) / 1000,
+        });
+      }, 250);
+      setRecorderState({ kind: "recording", elapsedSec: 0 });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setRecorderState({ kind: "error", message: msg });
+      toast.error("Could not access microphone", { description: msg });
+    }
+  }
+
+  function stopRecording() {
+    recorderRef.current?.stop();
+  }
+
+  function clearRecording() {
+    if (recording?.url) URL.revokeObjectURL(recording.url);
+    setRecording(null);
   }
 
   const running = !!active;
@@ -217,6 +320,75 @@ export function AudioPanel({ active, onRun, onCancel }: AudioPanelProps) {
           </div>
         )}
 
+        {/* Live-record — mirrors CARE FE's "Voice Autofill" button.
+            When a recording exists it overrides the test-case audio on the next Run
+            (scoring is skipped since we have no ground truth for what was said). */}
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Mic className="h-4 w-4 text-rose-500" />
+              <span>Or record live</span>
+              {recording && (
+                <Badge variant="info">will override test-case audio</Badge>
+              )}
+            </div>
+            {recording && (
+              <button
+                type="button"
+                onClick={clearRecording}
+                className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-red-600"
+                disabled={running}
+              >
+                <Trash2 className="h-3 w-3" /> Clear
+              </button>
+            )}
+          </div>
+
+          {recorderState.kind === "recording" ? (
+            <div className="flex items-center gap-3">
+              <Button variant="destructive" size="sm" onClick={stopRecording}>
+                <Square className="h-4 w-4" /> Stop
+              </Button>
+              <span className="flex items-center gap-1.5 text-sm">
+                <CircleDot className="h-3 w-3 animate-pulse text-red-500" />
+                <span className="font-mono">{formatSec(recorderState.elapsedSec)}</span>
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={startRecording}
+                disabled={running || recorderState.kind === "requesting"}
+              >
+                {recorderState.kind === "requesting" ? (
+                  <>
+                    <MicOff className="h-4 w-4" /> Requesting mic…
+                  </>
+                ) : (
+                  <>
+                    <Mic className="h-4 w-4" /> Record
+                  </>
+                )}
+              </Button>
+              {recorderState.kind === "error" && (
+                <span className="text-xs text-red-600">{recorderState.message}</span>
+              )}
+            </div>
+          )}
+
+          {recording && (
+            <div className="mt-2 space-y-1">
+              <audio controls className="w-full" src={recording.url} />
+              <div className="text-xs text-slate-500">
+                {recording.mimeType} · {recording.durationSec.toFixed(1)}s ·{" "}
+                {(recording.blob.size / 1024).toFixed(1)} KB
+              </div>
+            </div>
+          )}
+        </div>
+
         <details className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
           <summary className="cursor-pointer select-none font-medium">Model overrides (optional)</summary>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -255,7 +427,11 @@ export function AudioPanel({ active, onRun, onCancel }: AudioPanelProps) {
               className="min-w-[8rem]"
             >
               <Play className="h-4 w-4" />
-              {runPreparing ? "Preparing…" : "Run"}
+              {runPreparing
+                ? "Preparing…"
+                : recording
+                  ? "Run with recording"
+                  : "Run"}
             </Button>
           ) : (
             <Button variant="destructive" onClick={onCancel}>
@@ -263,6 +439,11 @@ export function AudioPanel({ active, onRun, onCancel }: AudioPanelProps) {
             </Button>
           )}
           {!session && <span className="text-xs text-slate-500">Connect to a backend first.</span>}
+          {recording && !running && (
+            <span className="text-xs text-slate-500">
+              Uses <strong>{selected?.name}</strong>&apos;s form schema; scoring skipped.
+            </span>
+          )}
         </div>
 
         {active && (
@@ -292,4 +473,35 @@ function describeStage(u: RunUpdate): string {
     case "done":
       return "Done";
   }
+}
+
+function formatSec(secs: number): string {
+  const s = Math.max(0, Math.floor(secs));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m.toString().padStart(2, "0")}:${r.toString().padStart(2, "0")}`;
+}
+
+/** Pick a mime type the browser can actually record — prefers webm/opus, falls back to mp4 (Safari). */
+function pickSupportedMime(): string | undefined {
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+  ];
+  if (typeof MediaRecorder === "undefined") return undefined;
+  for (const t of candidates) {
+    if (MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return undefined;
+}
+
+function extFromMime(mime: string): string {
+  if (mime.includes("webm")) return "webm";
+  if (mime.includes("mp4")) return "m4a";
+  if (mime.includes("ogg")) return "ogg";
+  if (mime.includes("wav")) return "wav";
+  return "bin";
 }
