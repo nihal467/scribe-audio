@@ -71,7 +71,9 @@ export function QuestionnairePanel({ active, onRun, onCancel }: Props) {
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"" | "active" | "draft" | "retired">("");
   const [list, setList] = useState<QuestionnaireSummary[] | null>(null);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [listLoading, setListLoading] = useState(false);
   const [selectedSlug, setSelectedSlug] = useState<string>("");
@@ -98,14 +100,31 @@ export function QuestionnairePanel({ active, onRun, onCancel }: Props) {
     setListLoading(true);
     setListError(null);
     api
-      .listQuestionnaires({ search: debouncedSearch || undefined, status: "active", limit: 50 })
-      .then((res) => {
+      .listQuestionnaires({
+        search: debouncedSearch || undefined,
+        status: statusFilter || undefined,
+        limit: 50,
+      })
+      .then((res: unknown) => {
         if (cancelled) return;
-        setList(res.results ?? []);
+        // The endpoint is normally paginated ({count, results}); but some
+        // deployments/routes may return a bare array — tolerate both.
+        if (Array.isArray(res)) {
+          setList(res as QuestionnaireSummary[]);
+          setTotalCount((res as QuestionnaireSummary[]).length);
+        } else {
+          const paged = res as { count?: number; results?: QuestionnaireSummary[] };
+          setList(paged.results ?? []);
+          setTotalCount(typeof paged.count === "number" ? paged.count : (paged.results?.length ?? 0));
+        }
+        // Debug hint — helps diagnose why the list is empty in prod.
+        // eslint-disable-next-line no-console
+        console.debug("[questionnaire] list response", res);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         setList([]);
+        setTotalCount(null);
         setListError(err instanceof Error ? err.message : String(err));
       })
       .finally(() => {
@@ -114,7 +133,7 @@ export function QuestionnairePanel({ active, onRun, onCancel }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [api, debouncedSearch]);
+  }, [api, debouncedSearch, statusFilter]);
 
   // Restore the last-used slug from localStorage.
   useEffect(() => {
@@ -268,6 +287,25 @@ export function QuestionnairePanel({ active, onRun, onCancel }: Props) {
               </Button>
             </div>
 
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <Label className="text-xs">Status</Label>
+              <select
+                className="h-7 flex-1 rounded border border-slate-200 bg-white px-2 text-xs"
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value as "" | "active" | "draft" | "retired")
+                }
+              >
+                <option value="">any</option>
+                <option value="active">active</option>
+                <option value="draft">draft</option>
+                <option value="retired">retired</option>
+              </select>
+              {totalCount != null && (
+                <Badge variant="info">{totalCount} total</Badge>
+              )}
+            </div>
+
             {listError && (
               <Alert variant="danger">
                 <AlertTitle>Could not load questionnaires</AlertTitle>
@@ -284,8 +322,13 @@ export function QuestionnairePanel({ active, onRun, onCancel }: Props) {
                 </div>
               ) : list && list.length === 0 ? (
                 <div className="p-3 text-xs text-slate-500">
-                  No active questionnaires found.
-                  {debouncedSearch ? ` Try clearing the search.` : ""}
+                  No questionnaires match this filter.
+                  {debouncedSearch ? " Try clearing the search." : ""}
+                  {statusFilter ? " Try setting status to \u201cany\u201d." : ""}
+                  {" "}
+                  Your account also needs the{" "}
+                  <code className="rounded bg-slate-100 px-1">can_read_questionnaire</code>{" "}
+                  permission in at least one organization (superusers bypass).
                 </div>
               ) : (
                 (list ?? []).map((q) => {
