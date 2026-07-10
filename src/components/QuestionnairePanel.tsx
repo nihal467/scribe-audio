@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 import { useConnection } from "@/hooks/use-connection";
-import type { RunUpdate } from "@/lib/scribe-runner";
+import type { ActiveRunState, RunUpdate } from "@/lib/scribe-runner";
 import {
   coerceExpectedValue,
   flattenFillableQuestions,
@@ -29,7 +29,6 @@ import type {
   TestCaseIndexEntry,
   TestCaseManifest,
 } from "@/types";
-import type { ActiveRunState } from "@/components/AudioPanel";
 
 const STAGE_PERCENT: Record<RunUpdate["stage"], number> = {
   creating: 10,
@@ -81,6 +80,7 @@ export function QuestionnairePanel({ active, onRun, onCancel }: Props) {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [expected, setExpected] = useState<Record<string, string>>({});
+  const [expectedTranscript, setExpectedTranscript] = useState<string>("");
   const [runPreparing, setRunPreparing] = useState(false);
 
   // Debounce search input (300ms) — the /questionnaire/ list is paginated so
@@ -198,6 +198,7 @@ export function QuestionnairePanel({ active, onRun, onCancel }: Props) {
         audio: `live-recording.${extFromMime(recording.mimeType)}`,
         mimeType: recording.mimeType,
         durationSec: recording.durationSec,
+        expectedTranscript: expectedTranscript.trim() || undefined,
       });
 
       const entry: TestCaseIndexEntry = {
@@ -229,7 +230,7 @@ export function QuestionnairePanel({ active, onRun, onCancel }: Props) {
     } finally {
       setRunPreparing(false);
     }
-  }, [api, detail, expected, fillableQuestions, onRun, recording]);
+  }, [api, detail, expected, expectedTranscript, fillableQuestions, onRun, recording]);
 
   if (!session) {
     return (
@@ -366,6 +367,27 @@ export function QuestionnairePanel({ active, onRun, onCancel }: Props) {
 
           {/* ─── Right column: detail + expected + record + run ─────── */}
           <div className="space-y-3">
+            {/* Step 1 — expected transcript. Independent of questionnaire
+                selection so the user can jot down what they said before or
+                after picking a form. Compared against the backend's
+                `Scribe.transcript` when the run completes. */}
+            <div className="rounded border border-slate-200 p-3">
+              <Label className="text-xs font-medium text-slate-700">
+                Expected transcript (optional)
+              </Label>
+              <p className="mt-0.5 text-[11px] text-slate-500">
+                What you plan to (or did) say. Compared against the AI's actual
+                transcript so you can tell how well audio→text worked, separate
+                from how well text→form worked.
+              </p>
+              <textarea
+                className="mt-2 min-h-[70px] w-full resize-y rounded border border-slate-200 bg-white px-2 py-1.5 text-xs font-mono leading-relaxed focus:outline-none focus:ring-1 focus:ring-slate-400"
+                placeholder="e.g. Patient's blood pressure is 120 over 80, oxygen saturation 98 percent…"
+                value={expectedTranscript}
+                onChange={(e) => setExpectedTranscript(e.target.value)}
+              />
+            </div>
+
             {detailLoading && (
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <Loader2 className="h-3 w-3 animate-spin" /> Loading questionnaire…

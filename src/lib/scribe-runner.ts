@@ -47,6 +47,17 @@ export type RunUpdate = {
   message?: string;
 };
 
+/**
+ * Ambient "a run is in flight for case X" state passed from the panel that
+ * kicked off the run down to any UI that needs to disable itself or show a
+ * progress bar. Owned by App.tsx; consumed by QuestionnairePanel.
+ */
+export type ActiveRunState = {
+  caseId: string;
+  update: RunUpdate;
+  startedAt: number;
+};
+
 export type RunOptions = {
   chatModel?: string;
   audioModel?: string;

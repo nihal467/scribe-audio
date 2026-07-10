@@ -162,7 +162,18 @@ export function coerceExpectedValue(raw: string, type: QuestionnaireType): unkno
 export function questionnaireToManifest(
   questionnaire: QuestionnaireDetail,
   expectedByQid: Record<string, unknown>,
-  opts: { audio: string; mimeType: string; durationSec: number | null },
+  opts: {
+    audio: string;
+    mimeType: string;
+    durationSec: number | null;
+    /**
+     * Optional natural-language ground truth for the audio's transcript.
+     * The scribe pipeline transcribes the audio independently of the
+     * form-fill step; capturing this lets the UI show how accurate that
+     * transcription is on its own.
+     */
+    expectedTranscript?: string;
+  },
 ): TestCaseManifest {
   const nested = walk(questionnaire.questions ?? []);
   // Wrap in a single top-level group so the payload always has the
@@ -184,6 +195,17 @@ export function questionnaireToManifest(
     expected[qid] = { value, note: null };
   }
 
+  // Flat UUID → friendly-name map so the UI can relabel the AI response
+  // (whose keys are question UUIDs) with human-readable question text.
+  const fieldLabels: Record<string, string> = {};
+  const collectLabels = (list: QuestionnaireQuestion[]) => {
+    for (const q of list) {
+      if (q.text) fieldLabels[q.id] = q.text;
+      if (q.questions?.length) collectLabels(q.questions);
+    }
+  };
+  collectLabels(questionnaire.questions ?? []);
+
   return {
     name: questionnaire.title,
     audio: opts.audio,
@@ -193,5 +215,7 @@ export function questionnaireToManifest(
     tags: ["questionnaire", questionnaire.slug],
     form_data,
     expected,
+    expectedTranscript: opts.expectedTranscript?.trim() || null,
+    fieldLabels,
   };
 }

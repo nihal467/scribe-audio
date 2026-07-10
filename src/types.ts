@@ -81,6 +81,20 @@ export type TestCaseManifest = {
   tags?: string[];
   form_data: FormGroup[];
   expected: Record<string, unknown>;
+  /**
+   * Optional ground-truth transcript. When set, the run captures the
+   * backend's `Scribe.transcript` and compares them so the user can tell
+   * whether the audio→text step alone is accurate (independent of the
+   * text→form-fill step).
+   */
+  expectedTranscript?: string | null;
+  /**
+   * Optional UUID → friendly-name mapping. Populated when the manifest is
+   * synthesised from a CARE questionnaire, so the "Raw JSON" view can
+   * relabel `ai_response` keys with human-readable question text instead
+   * of raw question UUIDs.
+   */
+  fieldLabels?: Record<string, string>;
 };
 
 /** Row in `public/test-cases/index.json`. */
@@ -122,6 +136,14 @@ export type RunResult = {
   scribeMeta?: Record<string, unknown> | null;
   /** Backend-reported terminal status (`FAILED`, `REFUSED`, …) for failed runs. */
   scribeStatus?: ScribeStatus;
+  /** Ground-truth transcript the user typed before the run. */
+  expectedTranscript?: string;
+  /** Actual transcript produced by the audio model (from `Scribe.transcript`). */
+  transcript?: string;
+  /** Levenshtein-based [0..1] similarity between transcript & expectedTranscript. */
+  transcriptSimilarity?: number;
+  /** UUID → friendly-name mapping used by the Raw-JSON view to relabel keys. */
+  fieldLabels?: Record<string, string>;
 };
 
 /** Per-field + aggregate scoring outcome. */

@@ -2,15 +2,14 @@ import { useCallback, useRef, useState } from "react";
 import { Toaster, toast } from "sonner";
 import { BackendPanel } from "@/components/BackendPanel";
 import { FrontendPanel } from "@/components/FrontendPanel";
-import { AudioPanel, type ActiveRunState } from "@/components/AudioPanel";
 import { QualityPanel } from "@/components/QualityPanel";
 import { QuestionnairePanel } from "@/components/QuestionnairePanel";
 import { ConnectionProvider, useConnection } from "@/hooks/use-connection";
 import { useStoredState } from "@/hooks/use-stored-state";
-import { runTestCase } from "@/lib/scribe-runner";
-import { scoreAgainstExpected } from "@/lib/scoring";
+import { runTestCase, type ActiveRunState } from "@/lib/scribe-runner";
+import { scoreAgainstExpected, stringSimilarity } from "@/lib/scoring";
 import { uuid } from "@/lib/utils";
-import type { RunResult } from "@/types";
+import type { RunResult, TestCaseIndexEntry, TestCaseManifest } from "@/types";
 
 const HISTORY_KEY = "scribe-audio.runs";
 const HISTORY_LIMIT = 50;
@@ -50,10 +49,20 @@ function Shell() {
   const [active, setActive] = useState<ActiveRunState | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const handleRun = useCallback<
-    React.ComponentProps<typeof AudioPanel>["onRun"]
-  >(
-    async ({ entry, manifest, audio, modelOverrides, audioSource }) => {
+  const handleRun = useCallback(
+    async ({
+      entry,
+      manifest,
+      audio,
+      modelOverrides,
+      audioSource,
+    }: {
+      entry: TestCaseIndexEntry;
+      manifest: TestCaseManifest;
+      audio: Blob;
+      modelOverrides: { chatModel?: string; audioModel?: string };
+      audioSource: "test-case" | "live-record";
+    }) => {
       if (!api) {
         toast.error("Not connected", { description: "Log in to the CARE backend first." });
         return;
@@ -78,7 +87,21 @@ function Shell() {
           },
         });
 
+        // Carry the transcript comparison + field-label map through to every
+        // RunResult path (both success and failure) so the QualityPanel can
+        // relabel UUIDs and show transcript-vs-expected regardless of outcome.
         const s = outcome.scribe;
+        const transcript = typeof s.transcript === "string" ? s.transcript : undefined;
+        const expectedTranscript = manifest.expectedTranscript?.trim() || undefined;
+        const transcriptSimilarity =
+          transcript && expectedTranscript
+            ? stringSimilarity(transcript, expectedTranscript)
+            : undefined;
+        const fieldLabels =
+          manifest.fieldLabels && Object.keys(manifest.fieldLabels).length > 0
+            ? manifest.fieldLabels
+            : undefined;
+
         if (s.status !== "COMPLETED") {
           // care_scribe embeds the real reason in meta.processings[*].error
           // (see care_scribe/tasks/scribe.py — every failure branch appends
@@ -102,6 +125,10 @@ function Shell() {
             audioSource: source,
             scribeMeta: s.meta ?? null,
             scribeStatus: s.status,
+            transcript,
+            expectedTranscript,
+            transcriptSimilarity,
+            fieldLabels,
           };
           toast.error("Run finished with an error", {
             description: backendErr ?? `Status: ${s.status}`,
@@ -129,6 +156,10 @@ function Shell() {
             formData: manifest.form_data,
             audioSource: source,
             expected: hasExpected ? manifest.expected : undefined,
+            transcript,
+            expectedTranscript,
+            transcriptSimilarity,
+            fieldLabels,
           };
           toast.success("Run complete", {
             description: score
@@ -204,9 +235,8 @@ function Shell() {
         <div className="grid gap-4 md:grid-cols-2">
           <BackendPanel />
           <FrontendPanel />
-          <AudioPanel active={active} onRun={handleRun} onCancel={handleCancel} />
-          <QualityPanel runs={runs} onClear={handleClearHistory} />
           <QuestionnairePanel active={active} onRun={handleRun} onCancel={handleCancel} />
+          <QualityPanel runs={runs} onClear={handleClearHistory} />
         </div>
       </main>
 

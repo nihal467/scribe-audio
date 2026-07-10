@@ -300,17 +300,21 @@ function RunDetail({
       )}
 
       {view === "raw" && run.ai_response && (
-        <details className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm" open>
-          <summary className="cursor-pointer select-none font-medium">
-            <ChevronRight className="mr-1 inline h-3 w-3" /> Raw AI response
-          </summary>
-          <pre className="mt-2 max-h-96 overflow-auto rounded bg-white p-2 text-xs">
-            {JSON.stringify(run.ai_response, null, 2)}
-          </pre>
-        </details>
+        <RawJsonView response={run.ai_response} fieldLabels={run.fieldLabels} />
       )}
       {view === "raw" && !run.ai_response && (
         <EmptyDetailPlaceholder text="No AI response body." />
+      )}
+
+      {/* Transcript diff — always visible when we have anything transcript-y
+          to show, independent of the view toggle. Sits below the tabs because
+          transcript accuracy is a separate axis from form-fill accuracy. */}
+      {(run.transcript || run.expectedTranscript) && (
+        <TranscriptDiffView
+          transcript={run.transcript}
+          expectedTranscript={run.expectedTranscript}
+          similarity={run.transcriptSimilarity}
+        />
       )}
     </div>
   );
@@ -349,6 +353,107 @@ function EmptyDetailPlaceholder({ text }: { text: string }) {
   return (
     <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-xs text-slate-500">
       {text}
+    </div>
+  );
+}
+
+// ─── Raw JSON view ─────────────────────────────────────────────────────────
+// care_scribe emits `ai_response` keyed by question UUID:
+//   { "4d93f386-…": {"value": 200}, "742e3407-…": {"value": 20}, … }
+// which is unreadable for humans. When we have a `fieldLabels` map (populated
+// by questionnaireToManifest) we relabel each top-level key with the
+// question's `text` and keep the UUID beside it for traceability.
+function RawJsonView({
+  response,
+  fieldLabels,
+}: {
+  response: Record<string, unknown>;
+  fieldLabels?: Record<string, string>;
+}) {
+  const hasLabels = fieldLabels && Object.keys(fieldLabels).length > 0;
+  const relabelled = useMemo(() => {
+    if (!hasLabels) return response;
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(response)) {
+      const label = fieldLabels![key];
+      out[label ? `${label} · [${key}]` : key] = value;
+    }
+    return out;
+  }, [response, fieldLabels, hasLabels]);
+  return (
+    <details className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm" open>
+      <summary className="cursor-pointer select-none font-medium">
+        <ChevronRight className="mr-1 inline h-3 w-3" /> Raw AI response
+        {hasLabels && (
+          <span className="ml-2 text-[10px] font-normal text-slate-500">
+            (keys relabelled with field names)
+          </span>
+        )}
+      </summary>
+      <pre className="mt-2 max-h-96 overflow-auto rounded bg-white p-2 text-xs">
+        {JSON.stringify(relabelled, null, 2)}
+      </pre>
+    </details>
+  );
+}
+
+// ─── Transcript diff view ─────────────────────────────────────────────────
+// Compares the backend's `Scribe.transcript` (what the audio model heard)
+// against the user's expected transcript. Similarity is Levenshtein-based
+// [0..1] — displayed as % so the user can tell audio→text quality
+// independently of text→form quality.
+function TranscriptDiffView({
+  transcript,
+  expectedTranscript,
+  similarity,
+}: {
+  transcript?: string;
+  expectedTranscript?: string;
+  similarity?: number;
+}) {
+  const pct = similarity != null ? Math.round(similarity * 100) : null;
+  const pctClass =
+    pct == null
+      ? "text-slate-500"
+      : pct >= 85
+        ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+        : pct >= 60
+          ? "text-amber-700 bg-amber-50 border-amber-200"
+          : "text-red-700 bg-red-50 border-red-200";
+  return (
+    <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-semibold text-slate-700">Transcript</div>
+        {pct != null && (
+          <span
+            className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${pctClass}`}
+          >
+            {pct}% similarity
+          </span>
+        )}
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        <div>
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+            AI transcript (from audio)
+          </div>
+          <div className="min-h-[60px] whitespace-pre-wrap rounded border border-slate-200 bg-white px-2 py-1.5 text-xs leading-relaxed text-slate-700">
+            {transcript ?? (
+              <span className="italic text-slate-400">Not provided by backend</span>
+            )}
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+            Expected transcript (what you said)
+          </div>
+          <div className="min-h-[60px] whitespace-pre-wrap rounded border border-slate-200 bg-white px-2 py-1.5 text-xs leading-relaxed text-slate-700">
+            {expectedTranscript ?? (
+              <span className="italic text-slate-400">None entered</span>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
