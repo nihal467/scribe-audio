@@ -103,7 +103,10 @@ export async function runTestCase(args: {
   });
   await api.uploadToSignedUrl(file.signed_url, audio, wireMime);
   abortIfNeeded();
-  await api.completeScribeFile(file.id);
+  await api.completeScribeFile(file.id, {
+    associatingId: scribe.external_id,
+    fileType: "SCRIBE_AUDIO",
+  });
 
   // 3. Mark READY → triggers Celery process_ai_form_fill
   emit({ stage: "marking-ready", scribeId: scribe.external_id });

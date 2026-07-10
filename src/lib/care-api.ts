@@ -265,12 +265,30 @@ export class CareAPI {
     });
   }
 
-  async completeScribeFile(id: string): Promise<ScribeFile> {
-    return this.request<ScribeFile>(`/api/care_scribe/scribe_file/${id}/`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ upload_completed: true }),
+  /**
+   * Mark the upload finished. The viewset's `get_queryset()` requires
+   * `?file_type=<STRING_NAME>&associating_id=<scribe.external_id>` on EVERY
+   * request (even retrieve/update by external_id), and — asymmetric with the
+   * create serializer — the filter uses the enum string name, not the int.
+   * Omitting these params 400s with `{"file_type":"file_type missing in
+   * request params"}`.
+   */
+  async completeScribeFile(
+    id: string,
+    opts: { associatingId: string; fileType?: "SCRIBE_AUDIO" | "SCRIBE_DOCUMENT" },
+  ): Promise<ScribeFile> {
+    const qs = new URLSearchParams({
+      file_type: opts.fileType ?? "SCRIBE_AUDIO",
+      associating_id: opts.associatingId,
     });
+    return this.request<ScribeFile>(
+      `/api/care_scribe/scribe_file/${id}/?${qs.toString()}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ upload_completed: true }),
+      },
+    );
   }
 
   /** Upload the raw audio bytes to the presigned URL returned by createScribeFile. */
