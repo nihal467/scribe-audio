@@ -171,7 +171,9 @@ function RunDetail({
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 p-4">
         <div className="text-sm font-semibold text-red-800">Run failed</div>
-        <div className="mt-1 text-xs text-red-700">{run.errorMessage ?? "Unknown error"}</div>
+        <div className="mt-1 whitespace-pre-wrap text-xs text-red-700">
+          {run.errorMessage ?? "Unknown error"}
+        </div>
       </div>
     );
   }

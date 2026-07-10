@@ -1,5 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useRef } from "react";
-import { CareAPI } from "@/lib/care-api";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from "react";
+import { CareAPI, CareApiError } from "@/lib/care-api";
 import type { Session } from "@/types";
 import { useStoredState } from "@/hooks/use-stored-state";
 
@@ -36,6 +36,41 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     }
     return apiRef.current;
   }, [session]);
+
+  // On mount / when the session first loads, verify the access token.
+  // If it's expired, try refreshing once. If that also fails, clear
+  // the session so the user sees the login form instead of silently
+  // getting 403s on every request.
+  const validatedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!session || !api) return;
+    // Skip if we already validated this exact access token.
+    if (validatedForRef.current === session.access) return;
+    validatedForRef.current = session.access;
+    let cancelled = false;
+    (async () => {
+      const ok = await api.validateToken();
+      if (cancelled || ok) return;
+      // Try refresh
+      try {
+        const { access } = await api.refreshToken(session.refresh);
+        if (cancelled) return;
+        setSession({ ...session, access });
+      } catch (err) {
+        if (cancelled) return;
+        // Refresh token is also dead — force re-login.
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[scribe-audio] Session expired; clearing.",
+          err instanceof CareApiError ? err.body : err,
+        );
+        clearSession();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session, api, setSession, clearSession]);
 
   const login = useCallback(
     async (baseUrl: string, username: string, password: string) => {

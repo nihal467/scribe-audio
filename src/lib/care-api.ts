@@ -81,7 +81,14 @@ export class CareAPI {
           /* ignore */
         }
       }
-      throw new CareApiError(`${res.status} ${res.statusText}`, { status: res.status, body });
+      // Build a human-friendly message that surfaces the DRF error body
+      // so callers don't lose the actual reason (e.g. "You do not have
+      // permission to create a benchmark scribe request.").
+      const detail = extractDetail(body);
+      const message = detail
+        ? `${res.status} ${res.statusText || ""} — ${detail}`
+        : `${res.status} ${res.statusText || ""}`.trim();
+      throw new CareApiError(message, { status: res.status, body });
     }
 
     if (!expectJson || res.status === 204) {
@@ -98,6 +105,36 @@ export class CareAPI {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     });
+  }
+
+  /**
+   * Exchange a refresh token for a new access token.
+   * Throws CareApiError if the refresh token itself is expired/invalid.
+   */
+  async refreshToken(refresh: string): Promise<{ access: string }> {
+    return this.request<{ access: string }>("/api/v1/auth/token/refresh/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh }),
+    });
+  }
+
+  /**
+   * Quick liveness check — hits a protected endpoint and returns true iff the
+   * current access token is accepted. Useful on page load to detect stale JWTs.
+   */
+  async validateToken(): Promise<boolean> {
+    if (!this.accessToken) return false;
+    try {
+      await this.request<unknown>("/api/v1/auth/token/verify/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: this.accessToken }),
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // ─── Plug config ─────────────────────────────────────────────────────────
@@ -149,11 +186,27 @@ export class CareAPI {
         body: JSON.stringify(payload),
       });
     } catch (err) {
-      if (err instanceof CareApiError && err.status === 404) {
-        throw new CareApiError(
-          "The CARE backend does not have care_scribe installed. Ask the ops team to add care_scribe to INSTALLED_APPS + run migrations.",
-          { status: 404, body: err.body },
-        );
+      if (err instanceof CareApiError) {
+        if (err.status === 404) {
+          throw new CareApiError(
+            "The CARE backend does not have care_scribe installed. Ask the ops team to add care_scribe to INSTALLED_APPS + run migrations.",
+            { status: 404, body: err.body },
+          );
+        }
+        if (err.status === 401 || err.status === 403) {
+          // The two most common causes on care_scribe/scribe/:
+          //   - JWT expired / not sent   → log in again
+          //   - Non-superuser + benchmark=true or model overrides
+          //     (see care_scribe/serializers/scribe.py — those checks throw
+          //     but Django's auth layer may surface as 403 for MFA-guarded users too)
+          const hint =
+            "This usually means your JWT expired (log in again) or your account isn't a superuser " +
+            "— care_scribe requires superuser for `benchmark: true` and for custom chat/audio model overrides.";
+          throw new CareApiError(`${err.message}\n\n${hint}`, {
+            status: err.status,
+            body: err.body,
+          });
+        }
       }
       throw err;
     }
@@ -229,4 +282,25 @@ export function findScribeFrontendPlug(configs: PlugConfig[]): PlugConfig | unde
     configs.find((c) => c.slug === "care_scribe_fe") ??
     configs.find((c) => c.slug.toLowerCase().includes("scribe"))
   );
+}
+
+/**
+ * Pull a readable message out of a DRF error body.
+ * Handles the common shapes: {detail}, {field:[msg]}, {non_field_errors:[…]}, string.
+ */
+function extractDetail(body: unknown): string | null {
+  if (!body) return null;
+  if (typeof body === "string") return body.slice(0, 300);
+  if (typeof body !== "object") return null;
+  const b = body as Record<string, unknown>;
+  if (typeof b.detail === "string") return b.detail;
+  if (Array.isArray(b.non_field_errors) && b.non_field_errors.length > 0) {
+    return String(b.non_field_errors[0]);
+  }
+  // First field-level error, if any: {benchmark: ["You do not have permission…"]}
+  for (const [k, v] of Object.entries(b)) {
+    if (Array.isArray(v) && v.length > 0) return `${k}: ${v[0]}`;
+    if (typeof v === "string") return `${k}: ${v}`;
+  }
+  return null;
 }
