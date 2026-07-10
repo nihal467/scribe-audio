@@ -103,8 +103,18 @@ export class CareAPI {
   // ─── Plug config ─────────────────────────────────────────────────────────
 
   async listPlugConfigs(): Promise<PlugConfig[]> {
-    const res = await this.request<PlugConfig[] | { results: PlugConfig[] }>("/api/v1/plug_config/");
-    return Array.isArray(res) ? res : res.results ?? [];
+    // The CARE plug_config endpoint returns `{configs: [...]}` in the wild
+    // (confirmed against teleicuapi.ohc.network), but older builds return a bare
+    // array or a DRF-paginated `{results: [...]}`. Handle all three.
+    const res = await this.request<
+      | PlugConfig[]
+      | { configs: PlugConfig[] }
+      | { results: PlugConfig[] }
+    >("/api/v1/plug_config/");
+    if (Array.isArray(res)) return res;
+    if ("configs" in res && Array.isArray(res.configs)) return res.configs;
+    if ("results" in res && Array.isArray(res.results)) return res.results;
+    return [];
   }
 
   async getPlugConfig(slug: string): Promise<PlugConfig> {
@@ -130,11 +140,21 @@ export class CareAPI {
   // ─── Scribe ──────────────────────────────────────────────────────────────
 
   async createScribe(payload: Partial<Scribe> & { benchmark?: boolean }): Promise<Scribe> {
-    return this.request<Scribe>("/api/v1/scribe/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    try {
+      return await this.request<Scribe>("/api/v1/scribe/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      if (err instanceof CareApiError && err.status === 404) {
+        throw new CareApiError(
+          "The CARE backend does not have care_scribe installed. Ask the ops team to add care_scribe to INSTALLED_APPS + run migrations.",
+          { status: 404, body: err.body },
+        );
+      }
+      throw err;
+    }
   }
 
   async getScribe(externalId: string): Promise<Scribe> {
