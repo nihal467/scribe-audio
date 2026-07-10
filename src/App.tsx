@@ -99,6 +99,8 @@ function Shell() {
             score: null,
             formData: manifest.form_data,
             audioSource: source,
+            scribeMeta: s.meta ?? null,
+            scribeStatus: s.status,
           };
           toast.error("Run finished with an error", {
             description: backendErr ?? `Status: ${s.status}`,

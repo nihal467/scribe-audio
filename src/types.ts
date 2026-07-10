@@ -118,6 +118,10 @@ export type RunResult = {
   audioSource?: "test-case" | "live-record";
   /** Only set for live-record runs (test cases use their manifest's expected). */
   expected?: Record<string, unknown>;
+  /** Full backend `meta` field (contains `processings[]` with per-stage timings + error strings). */
+  scribeMeta?: Record<string, unknown> | null;
+  /** Backend-reported terminal status (`FAILED`, `REFUSED`, …) for failed runs. */
+  scribeStatus?: ScribeStatus;
 };
 
 /** Per-field + aggregate scoring outcome. */

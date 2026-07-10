@@ -169,11 +169,29 @@ function RunDetail({
 }) {
   if (run.status === "failed") {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-        <div className="text-sm font-semibold text-red-800">Run failed</div>
-        <div className="mt-1 whitespace-pre-wrap text-xs text-red-700">
-          {run.errorMessage ?? "Unknown error"}
+      <div className="space-y-3">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+          <div className="text-sm font-semibold text-red-800">Run failed</div>
+          <div className="mt-1 whitespace-pre-wrap text-xs text-red-700">
+            {run.errorMessage ?? "Unknown error"}
+          </div>
+          {run.scribeId && (
+            <div className="mt-2 font-mono text-[11px] text-red-600/70">
+              scribe {run.scribeId}
+              {run.scribeStatus ? ` · ${run.scribeStatus}` : ""}
+            </div>
+          )}
         </div>
+        {run.scribeMeta && Object.keys(run.scribeMeta).length > 0 && (
+          <details className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+            <summary className="cursor-pointer font-semibold text-slate-700">
+              Backend meta (full)
+            </summary>
+            <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded bg-white p-2 font-mono text-[11px] leading-relaxed text-slate-700">
+              {JSON.stringify(run.scribeMeta, null, 2)}
+            </pre>
+          </details>
+        )}
       </div>
     );
   }
