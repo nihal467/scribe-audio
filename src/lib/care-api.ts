@@ -1,5 +1,7 @@
 import type {
   PlugConfig,
+  QuestionnaireDetail,
+  QuestionnaireListResponse,
   Scribe,
   ScribeFile,
   TokenPair,
@@ -304,6 +306,30 @@ export class CareAPI {
         body: await safeText(res),
       });
     }
+  }
+
+  // ─── Questionnaire ───────────────────────────────────────────────────────
+  // ohcnetwork/care exposes questionnaires at /api/v1/questionnaire/ with a
+  // slug lookup (see care/emr/api/viewsets/questionnaire.py). List is paginated
+  // — we use the `results[]` shape. Filters that work: title (icontains),
+  // subject_type, status.
+
+  async listQuestionnaires(
+    opts: { search?: string; limit?: number; status?: string; subjectType?: string } = {},
+  ): Promise<QuestionnaireListResponse> {
+    const qs = new URLSearchParams();
+    if (opts.search) qs.set("title", opts.search);
+    if (opts.limit != null) qs.set("limit", String(opts.limit));
+    if (opts.status) qs.set("status", opts.status);
+    if (opts.subjectType) qs.set("subject_type", opts.subjectType);
+    const path = `/api/v1/questionnaire/${qs.toString() ? `?${qs.toString()}` : ""}`;
+    return this.request<QuestionnaireListResponse>(path);
+  }
+
+  async getQuestionnaire(slug: string): Promise<QuestionnaireDetail> {
+    return this.request<QuestionnaireDetail>(
+      `/api/v1/questionnaire/${encodeURIComponent(slug)}/`,
+    );
   }
 }
 

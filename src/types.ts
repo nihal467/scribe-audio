@@ -149,3 +149,64 @@ export type Session = {
   loggedInAt: string;
   username: string;
 };
+
+// ─── CARE questionnaire types ──────────────────────────────────────────────
+// Subset of the shape returned by `/api/v1/questionnaire/` on ohcnetwork/care.
+// Kept intentionally loose — the backend evolves, and we only care about the
+// fields we render + map to scribe form_data.
+
+export type QuestionnaireType =
+  | "group"
+  | "boolean"
+  | "decimal"
+  | "integer"
+  | "string"
+  | "text"
+  | "display"
+  | "date"
+  | "dateTime"
+  | "time"
+  | "choice"
+  | "url"
+  | "quantity"
+  | "structured";
+
+export type QuestionnaireAnswerOption = {
+  value: string;
+  display?: string | null;
+};
+
+export type QuestionnaireQuestion = {
+  id: string;
+  link_id: string;
+  text: string;
+  type: QuestionnaireType;
+  structured_type?: string | null;
+  required?: boolean | null;
+  repeats?: boolean | null;
+  read_only?: boolean | null;
+  answer_option?: QuestionnaireAnswerOption[] | null;
+  questions?: QuestionnaireQuestion[];
+  description?: string | null;
+};
+
+export type QuestionnaireSummary = {
+  id: string;
+  slug: string;
+  title: string;
+  description?: string | null;
+  subject_type?: string | null;
+  status?: string | null;
+};
+
+export type QuestionnaireDetail = QuestionnaireSummary & {
+  questions: QuestionnaireQuestion[];
+};
+
+export type QuestionnaireListResponse = {
+  count: number;
+  next?: string | null;
+  previous?: string | null;
+  results: QuestionnaireSummary[];
+};
+

@@ -4,6 +4,7 @@ import { BackendPanel } from "@/components/BackendPanel";
 import { FrontendPanel } from "@/components/FrontendPanel";
 import { AudioPanel, type ActiveRunState } from "@/components/AudioPanel";
 import { QualityPanel } from "@/components/QualityPanel";
+import { QuestionnairePanel } from "@/components/QuestionnairePanel";
 import { ConnectionProvider, useConnection } from "@/hooks/use-connection";
 import { useStoredState } from "@/hooks/use-stored-state";
 import { runTestCase } from "@/lib/scribe-runner";
@@ -205,6 +206,7 @@ function Shell() {
           <FrontendPanel />
           <AudioPanel active={active} onRun={handleRun} onCancel={handleCancel} />
           <QualityPanel runs={runs} onClear={handleClearHistory} />
+          <QuestionnairePanel active={active} onRun={handleRun} onCancel={handleCancel} />
         </div>
       </main>
 
