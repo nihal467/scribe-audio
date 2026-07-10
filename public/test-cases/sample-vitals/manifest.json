@@ -1,0 +1,66 @@
+{
+  "name": "Sample — ICU vitals",
+  "audio": "audio.mp3",
+  "mimeType": "audio/mpeg",
+  "durationSec": null,
+  "notes": "Placeholder case. Drop a real audio.mp3 alongside this manifest and adjust `expected` values.",
+  "tags": ["sample", "vitals"],
+  "form_data": [
+    {
+      "title": "Vitals",
+      "description": "Basic vitals questionnaire",
+      "fields": [
+        {
+          "id": "vital__bp_systolic",
+          "friendlyName": "Systolic BP",
+          "type": "number",
+          "current": null,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "value": { "type": ["number", "null"], "description": "Systolic blood pressure in mmHg" },
+              "note": { "type": ["string", "null"], "description": "Any additional context" }
+            },
+            "required": ["value", "note"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "vital__bp_diastolic",
+          "friendlyName": "Diastolic BP",
+          "type": "number",
+          "current": null,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "value": { "type": ["number", "null"], "description": "Diastolic blood pressure in mmHg" },
+              "note": { "type": ["string", "null"] }
+            },
+            "required": ["value", "note"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "vital__spo2",
+          "friendlyName": "SpO2 (%)",
+          "type": "number",
+          "current": null,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "value": { "type": ["number", "null"], "description": "Oxygen saturation percentage 0-100" },
+              "note": { "type": ["string", "null"] }
+            },
+            "required": ["value", "note"],
+            "additionalProperties": false
+          }
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "vital__bp_systolic": { "value": 120, "note": null },
+    "vital__bp_diastolic": { "value": 80, "note": null },
+    "vital__spo2": { "value": 98, "note": null }
+  }
+}
