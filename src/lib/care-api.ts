@@ -7,6 +7,18 @@ import type {
 import { trimTrailingSlash } from "@/lib/utils";
 
 /**
+ * care_scribe's ScribeFile.FileType is a Django `IntegerChoices` enum;
+ * the DRF ChoiceField wants the *integer*, not the string name.
+ * (The GET-list viewset filters on the string name via `__members__`, hence
+ *  the asymmetry with the create serializer.)
+ */
+const SCRIBE_FILE_TYPE = {
+  OTHER: 0,
+  SCRIBE_AUDIO: 1,
+  SCRIBE_DOCUMENT: 2,
+} as const;
+
+/**
  * Error thrown by CareAPI on non-2xx responses.
  * `body` holds the JSON body (if any) so callers can render actionable messages.
  */
@@ -234,10 +246,22 @@ export class CareAPI {
     name: string;
     length?: number; // seconds; serializer multiplies by 1000
   }): Promise<ScribeFile> {
+    // care_scribe's ScribeFile.FileType is IntegerChoices:
+    //   OTHER=0, SCRIBE_AUDIO=1, SCRIBE_DOCUMENT=2
+    // The DRF ChoiceField wants the integer, not the string name.
+    // And `length` is DecimalField(max_digits=20, decimal_places=2) — must be
+    // rounded to at most 2 decimals or the serializer 400s.
+    const wire: Record<string, unknown> = {
+      ...payload,
+      file_type: SCRIBE_FILE_TYPE[payload.file_type],
+    };
+    if (typeof payload.length === "number") {
+      wire.length = Math.round(payload.length * 100) / 100;
+    }
     return this.request<ScribeFile>("/api/care_scribe/scribe_file/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(wire),
     });
   }
 
